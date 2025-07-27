@@ -3,52 +3,57 @@
 <head>
   <meta charset="UTF-8" />
   <title>Interactive Water Ripples – purple caustics</title>
+
   <style>
     html,body{height:100%;margin:0;overflow:hidden;}
+
+    /* 水波容器 */
     #water-container{
       width:100%;
       height:100%;
-      /* 背景底色改成跟高光一致的淡紫渐隐 */
       background:radial-gradient(circle at 50% 50%,
                   rgba(200,150,255,.25) 0%,
                   rgba(200,150,255,0)   70%);
-      cursor:crosshair;
+      cursor:auto;                 /* ← 把 crosshair 改回默认 */
+    }
+    /* ripples 插件动态插入的 <canvas class="js-ripples"> */
+    #water-container .js-ripples{
+      cursor:auto !important;      /* ← 压过内联 style="cursor:crosshair" */
     }
   </style>
 </head>
+
 <body>
   <div id="water-container"></div>
 
   <!-- jQuery -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-  <!-- 原版 jquery.ripples（未改动） -->
+  <!-- 原版 jquery.ripples -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.ripples/0.5.3/jquery.ripples.min.js"></script>
 
-  <!-- —— 着色器补丁 —— -->
- <script>
-(function ($) {
-  if (!$.fn.ripples) return;
-  const orig = $.fn.ripples.prototype._createShader;
+  <!-- 着色器补丁：把白色高光染成淡紫 -->
+  <script>
+  (function ($) {
+    if (!$.fn.ripples) return;
+    const orig = $.fn.ripples.prototype._createShader;
 
-  $.fn.ripples.prototype._createShader = function (type, src) {
-    const gl = this._gl || (this.context && this.context.gl);
-    const isFrag = type === (gl ? gl.FRAGMENT_SHADER : 35632);
+    $.fn.ripples.prototype._createShader = function (type, src) {
+      const gl = this._gl || (this.context && this.context.gl);
+      const isFrag = type === (gl ? gl.FRAGMENT_SHADER : 35632);
 
-    if (isFrag) {
-      /* 1️⃣ 把 vec3(1.0) 改成淡紫，以弱化硬白高光 */
-      src = src.replace(/vec3\s*\(\s*1\.0\s*\)/g,
-                        'vec3(0.78,0.59,1.0)');
+      if (isFrag) {
+        /* 把 vec3(1.0) 改成淡紫并整体再乘一层 tint */
+        src = src.replace(/vec3\s*\(\s*1\.0\s*\)/g,
+                          'vec3(0.78,0.59,1.0)')
+                 .replace(/gl_FragColor\.rgb\s*=\s*(.*?);/,
+                          'gl_FragColor.rgb = ($1) * vec3(0.88,0.70,1.00);');
+      }
+      return orig.call(this, type, src);
+    };
+  })(jQuery);
+  </script>
 
-      /* 2️⃣ 在 main() 最后统一乘 tint：搜索 gl_FragColor；插入一行 */
-      src = src.replace(/gl_FragColor\.rgb\s*=\s*(.*?);/,
-                        'gl_FragColor.rgb = ($1) * vec3(0.88,0.70,1.00);');
-      /* tint 取 #E0B2FF ≈ (224,178,255)/255，可自行调饱和度 */
-    }
-    return orig.call(this, type, src);
-  };
-})(jQuery);
-</script>
-  <!-- —— 初始化水波 —— -->
+  <!-- 初始化水波 -->
   <script>
   (function(){
     const $water = $('#water-container');
@@ -60,16 +65,17 @@
       interactive: true
     });
 
-    // 鼠标 / 触控手动加滴水
+    // 手动注水
     $water.on('mousemove touchmove', function (e){
       const t = e.originalEvent.touches;
       const x = t ? t[0].pageX : e.pageX;
       const y = t ? t[0].pageY : e.pageY;
-      const offset = $water.offset();
-      $water.ripples('drop', x - offset.left, y - offset.top, 10, 0.04 + Math.random()*0.04);
+      const off = $water.offset();
+      $water.ripples('drop', x - off.left, y - off.top,
+                     10, 0.04 + Math.random()*0.04);
     });
 
-    // 窗口尺寸变化时同步帧缓冲
+    // 视口变化时同步
     $(window).on('resize', ()=>{ try{ $water.ripples('updateSize'); }catch(e){} });
   })();
   </script>
