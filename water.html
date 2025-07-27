@@ -2,68 +2,76 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Interactive Water Ripples</title>
+  <title>Interactive Water Ripples – purple caustics</title>
   <style>
-    /* ——— Layout ——— */
-    html, body {height:100%; margin:0; overflow:hidden;}
-
-    /* Ripple surface */
-  #water-container{
-  width:100%;
-  height:100%;
-  /* 直接去掉纯色，只留 radial‑gradient 里的淡白高光纹理 */
-  background: radial-gradient(circle at 50% 50%,
-              rgba(255,255,255,.25) 0%,
-              rgba(255,255,255,0)   70%);
-  cursor:crosshair;
-}
+    html,body{height:100%;margin:0;overflow:hidden;}
+    #water-container{
+      width:100%;
+      height:100%;
+      /* 背景底色改成跟高光一致的淡紫渐隐 */
+      background:radial-gradient(circle at 50% 50%,
+                  rgba(200,150,255,.25) 0%,
+                  rgba(200,150,255,0)   70%);
+      cursor:crosshair;
+    }
   </style>
 </head>
 <body>
   <div id="water-container"></div>
 
-  <!-- jQuery (dependency of the ripples plugin) -->
+  <!-- jQuery -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-  <!-- jQuery ‑ ripples plugin: turned into an IIFE WebGL shader under the hood -->
+  <!-- 原版 jquery.ripples（未改动） -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.ripples/0.5.3/jquery.ripples.min.js"></script>
 
+  <!-- —— 着色器补丁 —— -->
   <script>
-    (function(){
-      const $water = $('#water-container');
+  (function ($) {
+    // 等插件加载完才有原型
+    if (!$.fn.ripples) {
+      console.error('jquery.ripples not found – shader patch skipped');
+      return;
+    }
 
-      // Safety guard: ensure the plugin actually loaded
-      if (typeof $water.ripples !== 'function') {
-        console.error('⚠️  jquery.ripples failed to load or is inaccessible.');
-        return;
+    // 保存原函数
+    const _origCreateShader = $.fn.ripples.prototype._createShader;
+
+    // 核心补丁：如果是 fragment shader，则把 vec3(1.0) 换成我们要的紫色
+    $.fn.ripples.prototype._createShader = function (type, source) {
+      const gl = this._gl || (this.context && this.context.gl);
+      const isFragment = type === (gl ? gl.FRAGMENT_SHADER : 35632); // 35632 = WebGLRenderingContext.FRAGMENT_SHADER
+      if (isFragment) {
+        source = source.replace(/vec3\s*\(\s*1\.0\s*\)/g, 'vec3(0.784,0.588,1.0)');
       }
+      return _origCreateShader.call(this, type, source);
+    };
+  })(jQuery);
+  </script>
 
-      /* ───────────── Initialise the ripple simulation ───────────── */
-      $water.ripples({
-        resolution: 512,  // simulation texture size (higher ⇒ crisper caustics)
-        dropRadius: 20,   // default ripple radius (px)
-        perturbance: 0.04,// refraction intensity (0–1)
-        interactive: true // built‑in pointer + touch interaction
-      });
+  <!-- —— 初始化水波 —— -->
+  <script>
+  (function(){
+    const $water = $('#water-container');
 
-      /* Extra sparkle: add a ripple exactly where the pointer moves */
-      $water.on('mousemove touchmove', function (e) {
-        const isTouch = e.originalEvent.touches && e.originalEvent.touches.length;
-        const pageX   = isTouch ? e.originalEvent.touches[0].pageX : e.pageX;
-        const pageY   = isTouch ? e.originalEvent.touches[0].pageY : e.pageY;
+    $water.ripples({
+      resolution : 512,
+      dropRadius : 20,
+      perturbance: 0.04,
+      interactive: true
+    });
 
-        const posX = pageX - $water.offset().left;
-        const posY = pageY - $water.offset().top;
-        $water.ripples('drop', posX, posY, 10, 0.04 + Math.random() * 0.04);
-      });
+    // 鼠标 / 触控手动加滴水
+    $water.on('mousemove touchmove', function (e){
+      const t = e.originalEvent.touches;
+      const x = t ? t[0].pageX : e.pageX;
+      const y = t ? t[0].pageY : e.pageY;
+      const offset = $water.offset();
+      $water.ripples('drop', x - offset.left, y - offset.top, 10, 0.04 + Math.random()*0.04);
+    });
 
-      /* Keep the framebuffer in sync with viewport resizes */
-      $(window).on('resize', () => {
-        try { $water.ripples('updateSize'); } catch (err) { /* Safari sometimes complains when tab is hidden */ }
-      });
-
-      /* Lightweight self‑test so we know the instance exists (dev aid) */
-      console.assert($water.data('ripples'), 'Ripples instance not found!');
-    })();
+    // 窗口尺寸变化时同步帧缓冲
+    $(window).on('resize', ()=>{ try{ $water.ripples('updateSize'); }catch(e){} });
+  })();
   </script>
 </body>
 </html>
