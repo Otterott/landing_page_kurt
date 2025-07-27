@@ -1,77 +1,87 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Purple ripples on transparent</title>
+<meta charset="utf-8">
+<title>Purple ripples (CSS‑tinted)</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:none;}
+  #water{position:fixed;inset:0;cursor:auto;isolation:isolate;} /* isolate 让混合模式只影响自身 */
+  #water .js-ripples{cursor:auto !important;}                   /* 去掉十字光标 */
+  #water canvas{filter:hue-rotate(260deg) saturate(200%) brightness(200%) !important; pointer-events:none;} /* 强制将白色波纹染成紫色 */                   /* 去掉十字光标 */
 
-  <style>
-    html,body{margin:0;height:100%;overflow:hidden;background:none;}
-
-    /* 容器本身透明；只当定位基准 */
-    #water-container{
-      position:fixed; inset:0;
-      cursor:auto;                 /* ← 不要十字光标 */
-    }
-    /* 覆盖掉插件给 <canvas> 写的 crosshair */
-    #water-container .js-ripples{ cursor:auto !important; }
-  </style>
+  /* ── 紫色滤镜层：只在波纹非透明区域可见 ── */
+  #water::after{
+    content:"";
+    position:absolute;inset:0;
+    background:rgba(180,100,255,.8);   /* 紫色 & 强度可调 */
+    mix-blend-mode:screen;             /* 与白色波纹相加趋亮紫 */
+    mask:paint(ripples-mask);
+    -webkit-mask:paint(ripples-mask);
+    pointer-events:none;
+  }
+</style>
 </head>
 
 <body>
-  <div id="water-container"></div>
+  <div id="water"></div>
 
-  <!-- libs -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.ripples/0.5.3/jquery.ripples.min.js"></script>
 
-  <!-- shader patch：把白高光→紫，并让亮度只影响紫通道 -->
+  <!-- ①  shader patch：保持 alpha=0；强插 tint 否则覆写白波纹也行（可保留） -->
   <script>
   (function ($) {
-    if (!$.fn.ripples) return;
+    if (!$.fn.ripples) { console.error('ripples not found'); return; }
     const orig = $.fn.ripples.prototype._createShader;
-
     $.fn.ripples.prototype._createShader = function (type, src) {
-      const gl = this._gl || (this.context && this.context.gl);
-      if (type !== (gl ? gl.FRAGMENT_SHADER : 35632)) return orig.call(this,type,src);
-
-      /* ① 去掉对底图采样——改用透明底色 */
-      src = src.replace(/vec3 baseColor = texture2D\(.*?\)\.rgb;/,
-                        'vec3 baseColor = vec3(0.0);');
-
-      /* ② 把白光 vec3(light) 染成紫；并用乘法叠加避免 saturate→白 */
-      src = src.replace(/baseColor \+= vec3\(([^)]+)\);/,
-                        'baseColor += vec3($1) * vec3(0.78,0.59,1.0);');
-
-      /* ③ 输出保持 alpha=0，确保整个 canvas 真正透明 */
-      src = src.replace(/gl_FragColor = vec4\(baseColor,\s*1\.0\);/,
-                        'gl_FragColor = vec4(baseColor, 0.0);');
-
+      const gl   = this._gl || (this.context && this.context.gl);
+      const FRAG = gl ? gl.FRAGMENT_SHADER : 35632;
+      if (type === FRAG) {
+        /* 只保证输出 alpha = 0；rgb 不动 (仍然白) */
+        src = src.replace(/gl_FragColor\s*=\s*vec4\(([^;]+),\s*1\.0\s*\)/,
+                          'gl_FragColor = vec4($1, 0.0)');
+      }
       return orig.call(this, type, src);
     };
   })(jQuery);
   </script>
 
-  <!-- init -->
+  <!-- ②  注册 CSS Paint Worklet：用 <canvas> alpha 作蒙版 -->
   <script>
-  $(function(){
-    const $water = $('#water-container').ripples({
+  if ('paintWorklet' in CSS) {
+    CSS.paintWorklet.addModule(URL.createObjectURL(new Blob([`
+      class RipplesMask {
+        paint(ctx, geom) {
+          const c = document.querySelector('#water canvas');
+          if (!c) return;
+          ctx.drawImage(c, 0, 0, geom.width, geom.height);
+        }
+      }
+      registerPaint('ripples-mask', RipplesMask);
+    `], {type:'text/javascript'})));
+  }
+  </script>
+
+  <!-- ③  初始化水波 -->
+  <script>
+  $(function () {
+    const $w = $('#water').ripples({
       resolution : 512,
       dropRadius : 20,
       perturbance: 0.04,
       interactive: true
     });
 
-    // 手动滴水
-    $water.on('mousemove touchmove', e=>{
-      const t = e.originalEvent.touches;
-      const x = t ? t[0].pageX : e.pageX,
+    // 手动添波
+    $w.on('mousemove touchmove', e => {
+      const t = e.originalEvent.touches,
+            x = t ? t[0].pageX : e.pageX,
             y = t ? t[0].pageY : e.pageY,
-            off= $water.offset();
-      $water.ripples('drop', x-off.left, y-off.top, 10, 0.05+Math.random()*0.05);
+            o = $w.offset();
+      $w.ripples('drop', x - o.left, y - o.top, 10, 0.05 + Math.random() * 0.05);
     });
 
-    // resize
-    $(window).on('resize', ()=>{ try{$water.ripples('updateSize');}catch{} });
+    $(window).on('resize', () => { try { $w.ripples('updateSize'); } catch {} });
   });
   </script>
 </body>
