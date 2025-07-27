@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Interactive Water Ripples</title>
+  <style>
+    /* ——— Layout ——— */
+    html, body {height:100%; margin:0; overflow:hidden;}
+
+    /* Ripple surface */
+  #water-container{
+  width:100%;
+  height:100%;
+  /* 直接去掉纯色，只留 radial‑gradient 里的淡白高光纹理 */
+  background: radial-gradient(circle at 50% 50%,
+              rgba(255,255,255,.25) 0%,
+              rgba(255,255,255,0)   70%);
+  cursor:crosshair;
+}
+  </style>
+</head>
+<body>
+  <div id="water-container"></div>
+
+  <!-- jQuery (dependency of the ripples plugin) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+  <!-- jQuery ‑ ripples plugin: turned into an IIFE WebGL shader under the hood -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.ripples/0.5.3/jquery.ripples.min.js"></script>
+
+  <script>
+    (function(){
+      const $water = $('#water-container');
+
+      // Safety guard: ensure the plugin actually loaded
+      if (typeof $water.ripples !== 'function') {
+        console.error('⚠️  jquery.ripples failed to load or is inaccessible.');
+        return;
+      }
+
+      /* ───────────── Initialise the ripple simulation ───────────── */
+      $water.ripples({
+        resolution: 512,  // simulation texture size (higher ⇒ crisper caustics)
+        dropRadius: 20,   // default ripple radius (px)
+        perturbance: 0.04,// refraction intensity (0–1)
+        interactive: true // built‑in pointer + touch interaction
+      });
+
+      /* Extra sparkle: add a ripple exactly where the pointer moves */
+      $water.on('mousemove touchmove', function (e) {
+        const isTouch = e.originalEvent.touches && e.originalEvent.touches.length;
+        const pageX   = isTouch ? e.originalEvent.touches[0].pageX : e.pageX;
+        const pageY   = isTouch ? e.originalEvent.touches[0].pageY : e.pageY;
+
+        const posX = pageX - $water.offset().left;
+        const posY = pageY - $water.offset().top;
+        $water.ripples('drop', posX, posY, 10, 0.04 + Math.random() * 0.04);
+      });
+
+      /* Keep the framebuffer in sync with viewport resizes */
+      $(window).on('resize', () => {
+        try { $water.ripples('updateSize'); } catch (err) { /* Safari sometimes complains when tab is hidden */ }
+      });
+
+      /* Lightweight self‑test so we know the instance exists (dev aid) */
+      console.assert($water.data('ripples'), 'Ripples instance not found!');
+    })();
+  </script>
+</body>
+</html>
