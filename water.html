@@ -25,29 +25,29 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.ripples/0.5.3/jquery.ripples.min.js"></script>
 
   <!-- —— 着色器补丁 —— -->
-  <script>
-  (function ($) {
-    // 等插件加载完才有原型
-    if (!$.fn.ripples) {
-      console.error('jquery.ripples not found – shader patch skipped');
-      return;
+ <script>
+(function ($) {
+  if (!$.fn.ripples) return;
+  const orig = $.fn.ripples.prototype._createShader;
+
+  $.fn.ripples.prototype._createShader = function (type, src) {
+    const gl = this._gl || (this.context && this.context.gl);
+    const isFrag = type === (gl ? gl.FRAGMENT_SHADER : 35632);
+
+    if (isFrag) {
+      /* 1️⃣ 把 vec3(1.0) 改成淡紫，以弱化硬白高光 */
+      src = src.replace(/vec3\s*\(\s*1\.0\s*\)/g,
+                        'vec3(0.78,0.59,1.0)');
+
+      /* 2️⃣ 在 main() 最后统一乘 tint：搜索 gl_FragColor；插入一行 */
+      src = src.replace(/gl_FragColor\.rgb\s*=\s*(.*?);/,
+                        'gl_FragColor.rgb = ($1) * vec3(0.88,0.70,1.00);');
+      /* tint 取 #E0B2FF ≈ (224,178,255)/255，可自行调饱和度 */
     }
-
-    // 保存原函数
-    const _origCreateShader = $.fn.ripples.prototype._createShader;
-
-    // 核心补丁：如果是 fragment shader，则把 vec3(1.0) 换成我们要的紫色
-    $.fn.ripples.prototype._createShader = function (type, source) {
-      const gl = this._gl || (this.context && this.context.gl);
-      const isFragment = type === (gl ? gl.FRAGMENT_SHADER : 35632); // 35632 = WebGLRenderingContext.FRAGMENT_SHADER
-      if (isFragment) {
-        source = source.replace(/vec3\s*\(\s*1\.0\s*\)/g, 'vec3(0.784,0.588,1.0)');
-      }
-      return _origCreateShader.call(this, type, source);
-    };
-  })(jQuery);
-  </script>
-
+    return orig.call(this, type, src);
+  };
+})(jQuery);
+</script>
   <!-- —— 初始化水波 —— -->
   <script>
   (function(){
